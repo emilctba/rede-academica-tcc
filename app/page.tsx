@@ -39,7 +39,7 @@ export default function Home() {
   const [session, setSession] = useState<any>(null);
   const [loading, setLoading] = useState(true);
   const [guestMode, setGuestMode] = useState(false);
-  const [authMode, setAuthMode] = useState<"login" | "register" | "reset">("login");
+  const [authMode, setAuthMode] = useState<"login" | "register">("login");
 
   const [email, setEmail] = useState("");
   const [password, setPassword] = useState("");
@@ -147,7 +147,7 @@ export default function Home() {
     return true;
   }
 
-  function enterLoginScreen(mode: "login" | "register" | "reset" = "login") {
+  function enterLoginScreen(mode: "login" | "register" = "login") {
     setAuthMode(mode);
     setGuestMode(false);
     setError("");
@@ -166,7 +166,13 @@ export default function Home() {
     });
 
     if (loginError) {
-      setError(loginError.message);
+      if (loginError.message.toLowerCase().includes("invalid login credentials")) {
+        setError("E-mail ou senha incorretos.");
+      } else if (loginError.message.toLowerCase().includes("email not confirmed")) {
+        setError("Conta pendente. Desative 'Confirm email' em Authentication > Providers > Email no Supabase.");
+      } else {
+        setError(loginError.message);
+      }
     } else {
       setPassword("");
       setGuestMode(false);
@@ -200,42 +206,35 @@ export default function Home() {
           full_name: studentName.trim(),
           student_class: studentClass.trim(),
         },
-        emailRedirectTo: window.location.origin,
       },
+    });
+
+    if (signUpError) {
+      setError(signUpError.message);
+      setSending(false);
+      return;
+    }
+
+    // Se o Supabase já retornar sessão (Confirm email desativado), entra direto
+    if (data.session) {
+      setPassword("");
+      setGuestMode(false);
+      setSending(false);
+      return;
+    }
+
+    // Caso o projeto ainda não tenha criado sessão automática, tenta logar imediatamente
+    const { error: autoLoginError } = await supabase.auth.signInWithPassword({
+      email: email.trim(),
+      password,
     });
 
     setPassword("");
 
-    if (signUpError) {
-      setError(signUpError.message);
-    } else if (data.session) {
+    if (autoLoginError) {
+      setError("Conta criada, mas o Supabase ainda está exigindo confirmação de e-mail. Desative 'Confirm email' no painel do Supabase.");
+    } else {
       setGuestMode(false);
-      setMessage("Cadastro realizado com sucesso!");
-    } else {
-      setMessage("Cadastro realizado! Confira seu e-mail para confirmar sua conta.");
-      setAuthMode("login");
-    }
-
-    setSending(false);
-  }
-
-  async function handlePasswordReset(e: React.FormEvent<HTMLFormElement>) {
-    e.preventDefault();
-    setError("");
-    setMessage("");
-    setSending(true);
-
-    const { error: resetError } = await supabase.auth.resetPasswordForEmail(
-      email.trim(),
-      {
-        redirectTo: window.location.origin,
-      }
-    );
-
-    if (resetError) {
-      setError(resetError.message);
-    } else {
-      setMessage("Enviamos um link de recuperação para seu e-mail.");
     }
 
     setSending(false);
@@ -409,19 +408,8 @@ export default function Home() {
                 <div className="auth-actions-row">
                   <button
                     type="button"
-                    className="auth-link"
-                    onClick={() => {
-                      setAuthMode("reset");
-                      setError("");
-                      setMessage("");
-                    }}
-                  >
-                    Esqueci minha senha
-                  </button>
-
-                  <button
-                    type="button"
                     className="auth-guest-btn"
+                    style={{ width: "100%" }}
                     onClick={() => {
                       setError("");
                       setMessage("");
@@ -452,7 +440,7 @@ export default function Home() {
             {authMode === "register" && (
               <>
                 <h2>Crie sua conta!</h2>
-                <p>Faça parte da comunidade acadêmica.</p>
+                <p>Cadastro rápido, sem precisar confirmar e-mail.</p>
 
                 <form onSubmit={handleRegister} method="post" autoComplete="on">
                   <label htmlFor="register-name">Nome completo</label>
@@ -504,7 +492,7 @@ export default function Home() {
                   />
 
                   <button type="submit" className="auth-submit" disabled={sending}>
-                    {sending ? "Criando conta..." : "Criar minha conta →"}
+                    {sending ? "Criando conta..." : "Criar conta e entrar →"}
                   </button>
                 </form>
 
@@ -519,44 +507,6 @@ export default function Home() {
                     }}
                   >
                     Fazer login
-                  </button>
-                </div>
-              </>
-            )}
-
-            {authMode === "reset" && (
-              <>
-                <h2>Recuperar senha</h2>
-                <p>Informe seu e-mail para receber o link de recuperação.</p>
-
-                <form onSubmit={handlePasswordReset} method="post" autoComplete="on">
-                  <label htmlFor="reset-email">Seu e-mail</label>
-                  <input
-                    id="reset-email"
-                    name="email"
-                    type="email"
-                    autoComplete="email"
-                    placeholder="seuemail@exemplo.com"
-                    value={email}
-                    onChange={(e) => setEmail(e.target.value)}
-                    required
-                  />
-
-                  <button type="submit" className="auth-submit" disabled={sending}>
-                    {sending ? "Enviando..." : "Enviar link de recuperação"}
-                  </button>
-                </form>
-
-                <div className="auth-switch">
-                  <button
-                    type="button"
-                    onClick={() => {
-                      setAuthMode("login");
-                      setError("");
-                      setMessage("");
-                    }}
-                  >
-                    ← Voltar para login
                   </button>
                 </div>
               </>
